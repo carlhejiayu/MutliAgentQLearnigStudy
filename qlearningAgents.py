@@ -98,7 +98,11 @@ class QLearningAgent(ReinforcementAgent):
             self.computeValueFromQValues(state)
             return self.qValue[state]["Best Action"]
         else:
-            return None
+            allPossibleAction = self.getLegalActions(state)
+            if len(allPossibleAction) == 0:
+                return None
+            else:
+                return random.choice(allPossibleAction)
 
 
     def getAction(self, state):

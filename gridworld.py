@@ -182,19 +182,34 @@ class GridworldEnvironment(environment.Environment):
         self.gridWorld = gridWorld
         self.reset()
 
-    def getCurrentState(self):
-        return self.state
+    def getCurrentState(self, playerID):
+        if (playerID ==1):
+            return self.state1
+        else:
+            return self.state2
 
     def getPossibleActions(self, state):
         return self.gridWorld.getPossibleActions(state)
 
-    def doAction(self, action):
-        state = self.getCurrentState()
+    def twoAgentDoAction(self, action1 , action2 ):
+        if (action2 != None and action1 != None):
+            state = self.getCurrentState(1)
+            state2 = self.getCurrentState(2)
+            (player1, player2) = self.getRandomNextStateTwoPlayer(state, state2, action1,action2)
+            self.state1 = player1[0]
+            self.state2 = player2[0]
+            return (player1[0],player2[0],player1[1],player2[1])
+
+    def doAction (self, action,playerID):
+        state = self.getCurrentState(playerID)
         (nextState, reward) = self.getRandomNextState(state, action)
-        self.state = nextState
+        if (playerID == 1):
+            self.state1 = nextState
+        else:
+            self.state2 = nextState
         return (nextState, reward)
 
-    def getRandomNextState(self, state, action, randObj=None):
+    def getRandomNextState(self, state,action,randObj=None):
         rand = -1.0
         if randObj is None:
             rand = random.random()
@@ -211,8 +226,55 @@ class GridworldEnvironment(environment.Environment):
                 return (nextState, reward)
         raise 'Total transition probability less than one; sample failure.'
 
+    def getRandomNextStateTwoPlayer(self, state, state2, action1, action2,randObj=None):
+        rand = -1.0
+        rand2 = -1.0
+        if randObj is None:
+            rand = random.random()
+            rand2 = random.random()
+        else:
+            rand = randObj.random()
+        sum = 0.0
+        successors1 = self.gridWorld.getTransitionStatesAndProbs(state, action1)
+        successors2 = self.gridWorld.getTransitionStatesAndProbs(state2, action2)
+
+        PlayerOneResult = None
+        PlayerTwoResult = None
+        for nextState, prob in successors1:
+            sum += prob
+            if sum > 1.0:
+                raise 'Total transition probability more than one; sample failure.'
+            if rand < sum:
+                reward = self.gridWorld.getReward(state, action1, nextState)
+                PlayerOneResult= (nextState, reward)
+                break
+
+        sum = 0.0
+        for nextState2, prob in successors2:
+            sum += prob
+            if sum > 1.0:
+                raise 'Total transition probability more than one; sample failure.'
+            if rand2 < sum:
+                reward = self.gridWorld.getReward(state2, action2, nextState2)
+                PlayerTwoResult= (nextState2, reward)
+                break
+
+        if (PlayerOneResult ==  None or PlayerTwoResult == None):
+            raise 'Problem arised because no result return on either player'
+
+        isEndUpSameLocation = PlayerOneResult[0] == PlayerTwoResult[0] and ( self.gridWorld.isTerminal(PlayerOneResult[0])!= True and self.gridWorld.isTerminal(PlayerTwoResult[0]) != True)
+        isCrossingEachOther = (PlayerOneResult[0] == state2 and PlayerTwoResult[0] == state)
+
+        if (isEndUpSameLocation or isCrossingEachOther):
+            PlayerOneResult = (state, -0.2)
+            PlayerTwoResult = (state2, -0.2)
+        return (PlayerOneResult,PlayerTwoResult)
+
     def reset(self):
-        self.state = self.gridWorld.getStartState()
+        self.state1 = self.gridWorld.getStartState()
+        self.state2 = (1,0)
+
+
 
 class Grid:
     """
@@ -337,7 +399,7 @@ def getUserAction(state, actionFunction):
 
 def printString(x): print x
 
-def runEpisode(agent,agent2, environment,environment2, discount, decision,decision2, display, message, pause, episode):
+def runEpisode(agent,agent2, environment, discount, decision,decision2, display, message, pause, episode):
     returns = 0
     returns2 =0
     totalDiscount2 =0
@@ -345,49 +407,68 @@ def runEpisode(agent,agent2, environment,environment2, discount, decision,decisi
     a1Done = False
     a2Done = False
     environment.reset()
-    environment2.reset()
 
     if 'startEpisode' in dir(agent): agent.startEpisode()
     if 'startEpisode' in dir(agent2): agent2.startEpisode()
     message("BEGINNING EPISODE: "+str(episode)+"\n")
     while True:
         # DISPLAY CURRENT STATE
-        state = environment.getCurrentState()
-        state2 = environment2.getCurrentState()
+        state = environment.getCurrentState(1)
+        state2 = environment.getCurrentState(2)
 
         display(state,state2)
         pause()
 
-        # END IF IN A TERMINAL STATE
         actions = environment.getPossibleActions(state)
         if len(actions) == 0:
             message("EPISODE "+str(episode)+" COMPLETE: RETURN WAS "+str(returns)+"\n")
             a1Done = True
-        # GET ACTION (USUALLY FROM AGENT)
-        if (a1Done != True):
-            action = decision(state)
-            if action == None:
-                raise 'Error: Agent returned None action'
-
-            # EXECUTE ACTION
-            nextState, reward = environment.doAction(action)
-            message("Started in state: "+str(state)+
-                    "\nTook action: "+str(action)+
-                    "\nEnded in state: "+str(nextState)+
-                    "\nGot reward: "+str(reward)+"\n")
-            # UPDATE LEARNER
-            if 'observeTransition' in dir(agent):
-                agent.observeTransition(state, action, nextState, reward)
-
-            returns += reward * totalDiscount
-            totalDiscount *= discount
 
 
-        # END IF IN A TERMINAL STATE
         actions = environment.getPossibleActions(state2)
         if len(actions) == 0:
             message("EPISODE "+str(episode)+" COMPLETE: RETURN WAS "+str(returns)+"\n")
             a2Done = True
+
+        player1NextState  = None
+        player2NextState = None
+        reward1 = None
+        reward2 = None
+        action1 = None
+        action2 = None
+
+        if (a1Done == False and a2Done == False):
+            action1 = decision(state)
+            action2 = decision2(state2)
+            result = env.twoAgentDoAction(action1,action2)
+            player1NextState = result[0]
+            player2NextState = result[1]
+            reward1 = result [2]
+            reward2 = result [3]
+
+        if (a1Done == False and a2Done == True):
+            action1 = decision(state)
+            (player1NextState, reward1) = env.doAction(action1,1)
+
+        if (a1Done == True and a2Done == False):
+            action2 = decision(state2)
+            (player2NextState, reward2) = env.doAction(action2,2)
+        # END IF IN A TERMINAL STATE
+
+        # GET ACTION (USUALLY FROM AGENT)
+        if (a1Done != True):
+            # EXECUTE ACTION
+            if 'observeTransition' in dir(agent):
+                agent.observeTransition(state, action1, player1NextState, reward1)
+            message("Agent 1 Started in state: "+str(state)+
+                    "\nTook action: "+str(action1)+
+                    "\nEnded in state: "+str(player1NextState)+
+                    "\nGot reward: "+str(reward1)+"\n")
+            returns += reward1 * totalDiscount
+            totalDiscount *= discount
+
+
+
 
         if (a2Done == False):
             # GET ACTION (USUALLY FROM AGENT)
@@ -396,16 +477,15 @@ def runEpisode(agent,agent2, environment,environment2, discount, decision,decisi
                 raise 'Error: Agent returned None action'
 
             # EXECUTE ACTION
-            nextState, reward = environment2.doAction(action)
-            message("Started in state: "+str(state)+
-                    "\nTook action: "+str(action)+
-                    "\nEnded in state: "+str(nextState)+
-                    "\nGot reward: "+str(reward)+"\n")
+            message("Agent 2 Started in state: "+str(state2)+
+                    "\nTook action: "+str(action2)+
+                    "\nEnded in state: "+str(player2NextState)+
+                    "\nGot reward: "+str(reward2)+"\n")
             # UPDATE LEARNER
             if 'observeTransition' in dir(agent2):
-                agent2.observeTransition(state2, action, nextState, reward)
+                agent2.observeTransition(state2, action, player2NextState, reward2)
 
-            returns2 += reward * totalDiscount
+            returns2 += reward2 * totalDiscount
             totalDiscount2 *= discount
 
         if a1Done and a2Done:
@@ -621,7 +701,7 @@ if __name__ == '__main__':
         print
     returns = 0
     for episode in range(1, opts.episodes+1):
-        returns += runEpisode(a,a2, env,env2, opts.discount, decisionCallback,decisionCallback2, displayCallback, messageCallback, pauseCallback, episode)
+        returns += runEpisode(a,a2, env, opts.discount, decisionCallback,decisionCallback2, displayCallback, messageCallback, pauseCallback, episode)
     if opts.episodes > 0:
         print
         print "AVERAGE RETURNS FROM START STATE: "+str((returns+0.0) / opts.episodes)
