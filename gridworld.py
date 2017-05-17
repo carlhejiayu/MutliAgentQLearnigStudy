@@ -29,7 +29,7 @@ class Gridworld(mdp.MarkovDecisionProcess):
         self.grid = grid
 
         # parameters
-        self.livingReward = 0.0
+        self.livingReward = -0.00
         self.noise = 0.2
 
     def setLivingReward(self, reward):
@@ -47,6 +47,8 @@ class Gridworld(mdp.MarkovDecisionProcess):
         The probability of moving in an unintended direction.
         """
         self.noise = noise
+
+
 
 
     def getPossibleActions(self, state):
@@ -76,6 +78,22 @@ class Gridworld(mdp.MarkovDecisionProcess):
                     state = (x,y)
                     states.append(state)
         return states
+
+    def getRewardWithId(self, state, action, nextState,playerID):
+        """
+        Get reward for state, action, nextState transition.
+
+        Note that the reward depends only on the state being
+        departed (as in the R+N book examples, which more or
+        less use this convention).
+        """
+        if state == self.grid.terminalState:
+            return 0.0
+        x, y = state
+        cell = self.grid[x][y]
+        if type(cell) == int or type(cell) == float:
+            return cell
+        return self.livingReward
 
     def getReward(self, state, action, nextState):
         """
@@ -266,13 +284,13 @@ class GridworldEnvironment(environment.Environment):
         isCrossingEachOther = (PlayerOneResult[0] == state2 and PlayerTwoResult[0] == state)
 
         if (isEndUpSameLocation or isCrossingEachOther):
-            PlayerOneResult = (state, -0.2)
-            PlayerTwoResult = (state2, -0.2)
+            PlayerOneResult = (state, -0.5)
+            PlayerTwoResult = (state2, -0.5)
         return (PlayerOneResult,PlayerTwoResult)
 
     def reset(self):
         self.state1 = self.gridWorld.getStartState()
-        self.state2 = (1,0)
+        self.state2 = (0,0)
 
 
 
@@ -360,9 +378,9 @@ def getBridgeGrid():
     return Gridworld(grid)
 
 def getBookGrid():
-    grid = [[' ',' ',' ',+1],
-            [' ','#',' ',-1],
-            ['S',' ',' ',' ']]
+    grid = [[' ',+1,' '],
+            [' ',' ',' '],
+            [' ',' ','S']]
     return Gridworld(grid)
 
 def getMazeGrid():
@@ -662,7 +680,9 @@ if __name__ == '__main__':
             display.displayValues(a, message = "VALUES AFTER "+str(opts.iters)+" ITERATIONS")
             display.pause()
             display.displayQValues(a, message = "Q-VALUES AFTER "+str(opts.iters)+" ITERATIONS")
+            display2.displayQValues(a, message = "Q-VALUES AFTER "+str(opts.iters)+" ITERATIONS")
             display.pause()
+            display2.pause()
     except KeyboardInterrupt:
         sys.exit(0)
 
@@ -712,8 +732,14 @@ if __name__ == '__main__':
     if opts.agent == 'q' and not opts.manual:
         try:
             display.displayQValues(a, message = "Q-VALUES AFTER "+str(opts.episodes)+" EPISODES")
-            display.pause()
-            display.displayValues(a, message = "VALUES AFTER "+str(opts.episodes)+" EPISODES")
-            display.pause()
+            while True:
+                player = display.pauseforSwitchPlayer()
+                if player == 1:
+                    display.displayQValues(a, message="PLAYER 1 Q-VALUES AFTER " + str(opts.episodes) + " EPISODES")
+                if player == 2:
+                    display.displayQValues(a2, message="PLAYER 2 Q-VALUES AFTER " + str(opts.episodes) + " EPISODES")
+                if player == -1:
+                    break
+
         except KeyboardInterrupt:
             sys.exit(0)

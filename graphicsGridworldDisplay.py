@@ -28,6 +28,16 @@ class GraphicsGridworldDisplay:
     def pause(self):
         wait_for_keys()
 
+    def pauseforSwitchPlayer(self):
+        key =  wait_for_keys()
+        if (key[0] == '2' ):
+            return 2
+        if (key[0] == '1' ):
+            return 1
+        if (key[0] == 'q'):
+            return -1
+
+
     def displayValues(self, agent, currentState = None, message = 'Agent Values'):
         values = util.Counter()
         policy = {}
