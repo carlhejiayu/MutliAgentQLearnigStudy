@@ -29,7 +29,7 @@ class Gridworld(mdp.MarkovDecisionProcess):
         self.grid = grid
 
         # parameters
-        self.livingReward = -0.00
+        self.livingReward = 0.00
         self.noise = 0.2
 
     def setLivingReward(self, reward):
@@ -128,6 +128,28 @@ class Gridworld(mdp.MarkovDecisionProcess):
         """
         return state == self.grid.terminalState
 
+    def GetNextStateFromCurrentState(self,state,action):
+        if action not in self.getPossibleActions(state):
+            raise "Illegal action!"
+
+        if self.isTerminal(state):
+            return []
+        x, y = state
+        northState = (self.__isAllowed(y+1,x) and (x,y+1)) or state
+        westState = (self.__isAllowed(y,x-1) and (x-1,y)) or state
+        southState = (self.__isAllowed(y-1,x) and (x,y-1)) or state
+        eastState = (self.__isAllowed(y,x+1) and (x+1,y)) or state
+
+        if (action == "north"):
+            return  northState
+        elif (action == "west"):
+            return  westState
+        elif (action == "south"):
+            return southState
+        elif (action == "east"):
+            return  eastState
+        elif (action):
+            return "TERMINAL_STATE"
 
     def getTransitionStatesAndProbs(self, state, action):
         """
@@ -244,53 +266,54 @@ class GridworldEnvironment(environment.Environment):
                 return (nextState, reward)
         raise 'Total transition probability less than one; sample failure.'
 
-    def getRandomNextStateTwoPlayer(self, state, state2, action1, action2,randObj=None):
-        rand = -1.0
-        rand2 = -1.0
-        if randObj is None:
-            rand = random.random()
-            rand2 = random.random()
-        else:
-            rand = randObj.random()
-        sum = 0.0
-        successors1 = self.gridWorld.getTransitionStatesAndProbs(state, action1)
-        successors2 = self.gridWorld.getTransitionStatesAndProbs(state2, action2)
+    def getRandomNextStateTwoPlayer(self, state, state2, action1, action2):
+
+        rand = random.random()
+        rand2 = random.random()
 
         PlayerOneResult = None
         PlayerTwoResult = None
-        for nextState, prob in successors1:
-            sum += prob
-            if sum > 1.0:
-                raise 'Total transition probability more than one; sample failure.'
-            if rand < sum:
-                reward = self.gridWorld.getReward(state, action1, nextState)
-                PlayerOneResult= (nextState, reward)
-                break
+        nextState = self.gridWorld.GetNextStateFromCurrentState(state,action1)
 
-        sum = 0.0
-        for nextState2, prob in successors2:
-            sum += prob
-            if sum > 1.0:
-                raise 'Total transition probability more than one; sample failure.'
-            if rand2 < sum:
-                reward = self.gridWorld.getReward(state2, action2, nextState2)
-                PlayerTwoResult= (nextState2, reward)
-                break
+        if (self.gridWorld.isTerminal(nextState)):
+            reward = self.gridWorld.getReward(state, action1, nextState)
+            PlayerOneResult = (nextState, reward)
+        elif (nextState != state):
+            if (rand < self.gridWorld.noise):
+                reward = self.gridWorld.getReward(state, action1, nextState)
+                PlayerOneResult = (nextState, reward)
+            else:
+                PlayerOneResult = (state, 0.0)
+        else:
+            PlayerOneResult = (state, -10.0)
+
+        nextState = self.gridWorld.GetNextStateFromCurrentState(state2,action2)
+        if (self.gridWorld.isTerminal(nextState)):
+            reward = self.gridWorld.getReward(state2, action2, nextState)
+            PlayerTwoResult = (nextState, reward)
+        elif (nextState != state2):
+            if (rand2 < self.gridWorld.noise):
+                reward = self.gridWorld.getReward(state2, action2, nextState)
+                PlayerTwoResult = (nextState, reward)
+            else:
+                PlayerTwoResult = (state2, 0.0)
+        else:
+            PlayerTwoResult = (state2, 0.0)
 
         if (PlayerOneResult ==  None or PlayerTwoResult == None):
             raise 'Problem arised because no result return on either player'
 
-        isEndUpSameLocation = PlayerOneResult[0] == PlayerTwoResult[0] and ( self.gridWorld.isTerminal(PlayerOneResult[0])!= True and self.gridWorld.isTerminal(PlayerTwoResult[0]) != True)
-        isCrossingEachOther = (PlayerOneResult[0] == state2 and PlayerTwoResult[0] == state)
-
+        isBothEndUpAtGoalState = PlayerOneResult[0] == (1,2) and PlayerOneResult[1] == (1,2)
+        isEndUpSameLocation = PlayerOneResult[0] == PlayerTwoResult[0] and ( self.gridWorld.isTerminal(PlayerTwoResult[0]) != True) and (isBothEndUpAtGoalState != True)
+        isCrossingEachOther = False
         if (isEndUpSameLocation or isCrossingEachOther):
-            PlayerOneResult = (state, -0.5)
-            PlayerTwoResult = (state2, -0.5)
+            PlayerOneResult = (state, -1.0)
+            PlayerTwoResult = (state2, -1.0)
         return (PlayerOneResult,PlayerTwoResult)
 
     def reset(self):
         self.state1 = self.gridWorld.getStartState()
-        self.state2 = (0,0)
+        self.state2 = (2,0)
 
 
 
@@ -378,9 +401,9 @@ def getBridgeGrid():
     return Gridworld(grid)
 
 def getBookGrid():
-    grid = [[' ',+1,' '],
+    grid = [[' ',+100,' '],
             [' ',' ',' '],
-            [' ',' ','S']]
+            ['S',' ',' ']]
     return Gridworld(grid)
 
 def getMazeGrid():
@@ -464,31 +487,18 @@ def runEpisode(agent,agent2, environment, discount, decision,decision2, display,
             reward1 = result [2]
             reward2 = result [3]
 
-        if (a1Done == False and a2Done == True):
-            action1 = decision(state)
-            (player1NextState, reward1) = env.doAction(action1,1)
 
-        if (a1Done == True and a2Done == False):
-            action2 = decision(state2)
-            (player2NextState, reward2) = env.doAction(action2,2)
-        # END IF IN A TERMINAL STATE
-
-        # GET ACTION (USUALLY FROM AGENT)
-        if (a1Done != True):
             # EXECUTE ACTION
             if 'observeTransition' in dir(agent):
                 agent.observeTransition(state, action1, player1NextState, reward1)
             message("Agent 1 Started in state: "+str(state)+
                     "\nTook action: "+str(action1)+
-                    "\nEnded in state: "+str(player1NextState)+
+                    "\n.Ended in state: "+str(player1NextState)+
                     "\nGot reward: "+str(reward1)+"\n")
             returns += reward1 * totalDiscount
             totalDiscount *= discount
 
 
-
-
-        if (a2Done == False):
             # GET ACTION (USUALLY FROM AGENT)
             action = decision2(state2)
             if action == None:
@@ -506,7 +516,7 @@ def runEpisode(agent,agent2, environment, discount, decision,decision2, display,
             returns2 += reward2 * totalDiscount
             totalDiscount2 *= discount
 
-        if a1Done and a2Done:
+        if a1Done or a2Done:
             return returns
 
 
